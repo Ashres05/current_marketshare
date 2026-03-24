@@ -1,110 +1,90 @@
-import pandas as pd
-import os
-import snowflake.connector
-from dotenv import load_dotenv
+from snowflake_conn import Snowflake
 from pathlib import Path
-from cryptography.hazmat.primitives import serialization
-import textwrap
+from dataclasses import dataclass
 
-class Snowflake:
+@dataclass
+class TableConfig:
+    create_sql: str
+    update_sql: str
+
+# Dictionary of table name configurations, maps to .sql queries in folder
+TABLE_CONFIGS = {
+    'marketshare_map_label_hierarchy': TableConfig(
+        create_sql='create_map_label_hierarchy.sql', 
+        update_sql='update_map_label_hierarchy.sql'
+    ),
+    'marketshare_map_icpns': TableConfig(
+        create_sql='create_map_icpns.sql', 
+        update_sql='update_map_icpns.sql'
+    ),
+    'marketshare_map_isrcs': TableConfig(
+        create_sql='create_map_isrcs.sql', 
+        update_sql='update_map_isrcs.sql'
+    ),
+    'marketshare_weekly': TableConfig(
+        create_sql='create_marketshare_weekly.sql', 
+        update_sql='update_marketshare_weekly.sql'
+    ),
+    'marketshare_ytd': TableConfig(
+        create_sql='create_marketshare_ytd.sql', 
+        update_sql='update_marketshare_ytd.sql'
+    ),
+    'marketshare_forecasts': TableConfig(
+        create_sql='create_marketshare_forecasts.sql', 
+        update_sql='update_marketshare_forecasts.sql'
+    )
+}
+
+# Main Marketshare functions
+
+def set_database(_sf: Snowflake) -> None:
     """
-    Snowflake connection class.
+    Takes in Snowflake connection sets database.
     """
-    def __init__(self, creds):
-        """
-        Initialize the Snowflake connection using provided credentials.
-        """
-        self._creds = creds
-        self.conn = None
+    _sf.query(load_sql('set_database.sql'))
+
+def verify_schema(_sf: Snowflake) -> None:
+    """
+    Takes in Snowflake connection and verifies if tables are created, if not they are created.
+    Done by looping through TABLE_CONFIGS.
+    """
+    for table_name, config in TABLE_CONFIGS.items():
+        clean_name = table_name.replace('_', ' ')
+        if not verify_table(_sf, table_name):
+            _sf.query(load_sql(config.create_sql))
+            print(f"Created {clean_name} table.")
+
+def update_tables(_sf: Snowflake) -> None:
+    """
+    Takes in Snowflake connection and updates tables.
+    Done by looping through TABLE_CONFIGS.
+    """
+    for table_name, config in TABLE_CONFIGS.items():
+        clean_name = table_name.replace('_', ' ')
         
-    def __enter__(self):
-        """
-        Returns self to build context manager.
-        """
-        try:
-            self.conn = snowflake.connector.connect(**self._creds)
-            return self
-        except Exception as e:
-            raise SnowflakeConnectionError(f"Failed to connect to Snowflake: {e}")
+        if verify_table(_sf, table_name):
+            _sf.query(load_sql(config.update_sql))
+            print(f"Updated {clean_name} table.")
+        else:
+            print(f"Table {clean_name} does not exist... failed to populate.")
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """
-        Ensure the Snowflake connection is closed when the object exits a context manager.
-        """
-        if hasattr(self, 'conn') and self.conn:
-            self.conn.close()
- 
-    def query(self, sql: str) -> pd.DataFrame:
-        """
-        Execute a SQL query and return the results as a pandas DataFrame.
-        """
-        if not self.conn:
-            raise SnowflakeConnectionError("Snowflake connection is not established.")
- 
-        try:
-            return pd.read_sql(sql, con=self.conn)
-        except snowflake.connector.errors.ProgrammingError as e:
-            raise SnowflakeConnectionError(f"An error occurred while executing the query: {e}")
-        except Exception as e:
-            raise SnowflakeConnectionError(f"Unexpected error: {e}")
-
-
-class SnowflakeConnectionError(Exception):
-    """
-    Custom Snowflake Connection Error.
-    """
-    pass
-
-
-def get_snowflake_connection():
-    """
-    Returns connection to Snowflake based off data from secrets file.
-    """
-    # For the EC2, comment out the env_path and uncomment out the single load_dotenv()
-    env_path = Path(os.getcwd()) / 'secrets' / 'snowflake_secrets.env'
-    load_dotenv(env_path, override=True)
-    # load_dotenv()
-
-    private_key_str = os.getenv("SNOWFLAKE_PRIVATE_KEY")
-
-    # Extract the header and footer
-    header = "-----BEGIN PRIVATE KEY-----"
-    footer = "-----END PRIVATE KEY-----"
-    key_body = private_key_str.replace(header, "").replace(footer, "").strip()
-
-    # Insert line breaks every 64 characters
-    key_body_wrapped = "\n".join(textwrap.wrap(key_body, 64))
-    private_key_pem = f"{header}\n{key_body_wrapped}\n{footer}".encode()
-
-    private_key = serialization.load_pem_private_key(
-        private_key_pem,
-        password=None
-    )
-
-    private_key_der = private_key.private_bytes(
-        encoding=serialization.Encoding.DER,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption()
-    )
-
-    creds = {
-        "user": os.environ.get("SNOWFLAKE_USER"),
-        "role": os.environ.get("SNOWFLAKE_ROLE"),
-        "private_key": private_key_der,
-        "warehouse": os.environ.get("SNOWFLAKE_WAREHOUSE"),
-        "account":os.environ.get("SNOWFLAKE_ACCOUNT"),
-        # "password":os.environ.get("PASSWORD")
-    }
-    
-    return Snowflake(creds)
-
+# Helper marketshare functions
 
 def load_sql(file_name: str) -> str:
     """
     Takes file name and goes into the queries folder to return the file
     as text.
     """
-    current_dir = Path(os.getcwd())
+    current_dir = Path(__file__).parent
     path = current_dir / 'queries' / file_name
     return path.read_text(encoding='utf-8')
 
+
+def verify_table(_sf: Snowflake, file_name: str) -> bool:
+    """
+    Takes file name and returns whether it exists in CURRENT_DEV.DATA schema
+    """
+    sql = load_sql('verify_current_table.sql')
+    sql = sql.replace('{placeholder}', file_name.upper())
+    df = _sf.query(sql)
+    return bool(df.iloc[0,0])
