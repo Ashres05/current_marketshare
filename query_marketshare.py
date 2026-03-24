@@ -1,6 +1,7 @@
 from snowflake_conn import Snowflake
 from pathlib import Path
 from dataclasses import dataclass
+import logging
 
 @dataclass
 class TableConfig:
@@ -35,12 +36,12 @@ TABLE_CONFIGS = {
     )
 }
 
-# Main Marketshare functions
+# Set up logger for module
+LOGGER = logging.getLogger(__name__)
 
+# Main Marketshare functions
 def set_database(_sf: Snowflake) -> None:
-    """
-    Takes in Snowflake connection sets database.
-    """
+    """Takes in Snowflake connection sets database."""
     _sf.query(load_sql('set_database.sql'))
 
 def verify_schema(_sf: Snowflake) -> None:
@@ -52,38 +53,30 @@ def verify_schema(_sf: Snowflake) -> None:
         clean_name = table_name.replace('_', ' ')
         if not verify_table(_sf, table_name):
             _sf.query(load_sql(config.create_sql))
-            print(f"Created {clean_name} table.")
+            LOGGER.info(f"Created {clean_name} table.")
 
 def update_tables(_sf: Snowflake) -> None:
-    """
-    Takes in Snowflake connection and updates tables.
-    Done by looping through TABLE_CONFIGS.
-    """
+    """Takes in Snowflake connection and updates tables. Done by looping through TABLE_CONFIGS."""
     for table_name, config in TABLE_CONFIGS.items():
         clean_name = table_name.replace('_', ' ')
         
         if verify_table(_sf, table_name):
             _sf.query(load_sql(config.update_sql))
-            print(f"Updated {clean_name} table.")
+            LOGGER.info(f"Updated {clean_name} table.")
         else:
-            print(f"Table {clean_name} does not exist... failed to populate.")
+            LOGGER.warning(f"Table {clean_name} does not exist... failed to populate.")
 
-# Helper marketshare functions
+# Helper Marketshare functions
 
 def load_sql(file_name: str) -> str:
-    """
-    Takes file name and goes into the queries folder to return the file
-    as text.
-    """
+    """Takes file name and goes into the queries folder to return the file as text."""
     current_dir = Path(__file__).parent
     path = current_dir / 'queries' / file_name
     return path.read_text(encoding='utf-8')
 
 
 def verify_table(_sf: Snowflake, file_name: str) -> bool:
-    """
-    Takes file name and returns whether it exists in CURRENT_DEV.DATA schema
-    """
+    """Takes file name and returns whether it exists in CURRENT_DEV.DATA schema"""
     sql = load_sql('verify_current_table.sql')
     sql = sql.replace('{placeholder}', file_name.upper())
     df = _sf.query(sql)

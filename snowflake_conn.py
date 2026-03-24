@@ -6,6 +6,9 @@ from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 import textwrap
 
+SECRETS_DIR_NAME = 'secrets'
+SNOWFLAKE_SECRETS_FILE = 'snowflake_secrets.env'
+
 class Snowflake:
     """
     Snowflake connection class.
@@ -61,7 +64,7 @@ def get_snowflake_connection():
     Returns connection to Snowflake based off data from secrets file.
     """
     current_dir = Path(__file__).parent
-    env_path = current_dir / 'secrets' / 'snowflake_secrets.env'
+    env_path = current_dir / SECRETS_DIR_NAME / SNOWFLAKE_SECRETS_FILE
 
     if env_path.exists():
         # LOCAL: If the secrets file exists, load it
