@@ -33,6 +33,10 @@ TABLE_CONFIGS = {
     'marketshare_forecasts': TableConfig(
         create_sql='create_marketshare_forecasts.sql', 
         update_sql='update_marketshare_forecasts.sql'
+    ),
+    'marketshare_forecasts_weekly': TableConfig(
+        create_sql='create_marketshare_forecasts_weekly.sql', 
+        update_sql='update_marketshare_forecasts_weekly.sql'
     )
 }
 
