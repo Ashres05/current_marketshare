@@ -12,7 +12,7 @@ MERGE INTO CURRENT_DEV.DATA.MARKETSHARE_MAP_ICPNS AS target USING (
             WHEN DATEADD(MONTH, 18, mp.release_date) >= CURRENT_DATE() THEN TRUE
             ELSE FALSE
         END AS is_current,
-        SUM(r.share) AS percent_owned -- Combine split label shares (i.e. AMG buys 10% then 5% later; gets summed to 15%)
+        SUM(r.share * 100) AS percent_owned -- Combine split label shares (i.e. AMG buys 10% then 5% later; gets summed to 15%)
     FROM
         luminate_prod_wmgonly.extract_s.vw_musical_right_ds r
         JOIN luminate_prod.extract_s.vw_musical_product_ds mp ON mp.mp_id = r.entity_id
