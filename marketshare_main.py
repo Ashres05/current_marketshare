@@ -1,5 +1,6 @@
 from snowflake_conn import get_snowflake_connection
-from query_marketshare import set_database, verify_schema, update_tables
+from query_marketshare import QueryHandler
+from checkpoint_handler import CheckpointHandler, CheckpointError
 from log_handler import setup_logging
 import logging
 
@@ -11,21 +12,29 @@ def main() -> None:
         with get_snowflake_connection() as sf:
             logger.info("Snowflake connection was a success!")
 
-            set_database(sf)
+            checkpoint_handler = CheckpointHandler(sf)
+            qh = QueryHandler(sf, checkpoint_handler)
+
+            qh.set_database()
             logger.info("Database set.")
 
-            verify_schema(sf)
+            qh.verify_schema()
             logger.info("Schema verified.")
 
-            update_tables(sf)
+            qh.run_migrations()
+            logger.info("Migrations applied.")
+
+            qh.update_tables()
             logger.info("Tables populated.")
 
             logger.info("Closed!")
             return
+    except CheckpointError as e:
+        logger.error(f"A checkpoint error occurred: {e}", exc_info=True)
+        print("A checkpoint error occurred. Check logs for details.")
     except Exception as e:
         logger.error(f"An error occurred: {e}", exc_info=True)
         print("An error occurred. Check logs for details.")
 
 if __name__ == "__main__":
     main()
-

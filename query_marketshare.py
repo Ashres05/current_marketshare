@@ -1,87 +1,109 @@
 from snowflake_conn import Snowflake
 from pathlib import Path
-from dataclasses import dataclass
 import logging
-
-@dataclass
-class TableConfig:
-    create_sql: str
-    update_sql: str
-
-# Dictionary of table name configurations, maps to .sql queries in folder
-TABLE_CONFIGS = {
-    'marketshare_map_label_hierarchy': TableConfig(
-        create_sql='create_map_label_hierarchy.sql', 
-        update_sql='update_map_label_hierarchy.sql'
-    ),
-    'marketshare_map_icpns': TableConfig(
-        create_sql='create_map_icpns.sql', 
-        update_sql='update_map_icpns.sql'
-    ),
-    'marketshare_map_isrcs': TableConfig(
-        create_sql='create_map_isrcs.sql', 
-        update_sql='update_map_isrcs.sql'
-    ),
-    'marketshare_weekly': TableConfig(
-        create_sql='create_marketshare_weekly.sql', 
-        update_sql='update_marketshare_weekly.sql'
-    ),
-    'marketshare_ytd': TableConfig(
-        create_sql='create_marketshare_ytd.sql', 
-        update_sql='update_marketshare_ytd.sql'
-    ),
-    'marketshare_forecasts': TableConfig(
-        create_sql='create_marketshare_forecasts.sql', 
-        update_sql='update_marketshare_forecasts.sql'
-    ),
-    'marketshare_forecasts_weekly': TableConfig(
-        create_sql='create_marketshare_forecasts_weekly.sql', 
-        update_sql='update_marketshare_forecasts_weekly.sql'
-    )
-}
-
+from table_configs import TABLE_CONFIGS, TableConfig
+from checkpoint_handler import CheckpointHandler
+from datetime import datetime
 # Set up logger for module
 LOGGER = logging.getLogger(__name__)
 
-# Main Marketshare functions
-def set_database(_sf: Snowflake) -> None:
-    """Takes in Snowflake connection sets database."""
-    _sf.query(load_sql('set_database.sql'))
+class QueryHandler:
+    def __init__(self,
+        sf: Snowflake,
+        checkpoint_handler: CheckpointHandler,
+        table_configs: dict[str, TableConfig] = TABLE_CONFIGS):
+        LOGGER.info("Initializing QueryHandler...")
+        self._sf = sf
+        self._checkpoint_handler = checkpoint_handler
+        self._table_configs = table_configs
+        LOGGER.info("QueryHandler initialized successfully.")
 
-def verify_schema(_sf: Snowflake) -> None:
-    """
-    Takes in Snowflake connection and verifies if tables are created, if not they are created.
-    Done by looping through TABLE_CONFIGS.
-    """
-    for table_name, config in TABLE_CONFIGS.items():
-        clean_name = table_name.replace('_', ' ')
-        if not verify_table(_sf, table_name):
-            _sf.query(load_sql(config.create_sql))
-            LOGGER.info(f"Created {clean_name} table.")
+    # Main Marketshare functions
 
-def update_tables(_sf: Snowflake) -> None:
-    """Takes in Snowflake connection and updates tables. Done by looping through TABLE_CONFIGS."""
-    for table_name, config in TABLE_CONFIGS.items():
-        clean_name = table_name.replace('_', ' ')
-        
-        if verify_table(_sf, table_name):
-            _sf.query(load_sql(config.update_sql))
-            LOGGER.info(f"Updated {clean_name} table.")
-        else:
-            LOGGER.warning(f"Table {clean_name} does not exist... failed to populate.")
+    def set_database(self) -> None:
+        """Takes in Snowflake connection sets database."""
+        LOGGER.info("Setting database...")
+        self._sf.query(self.load_sql('set_database.sql'))
+        LOGGER.info("Database set successfully.")
 
-# Helper Marketshare functions
+    def verify_schema(self) -> None:
+        """
+        Takes in Snowflake connection and verifies if tables are created, if not they are created.
+        Done by looping through TABLE_CONFIGS.
+        """
+        LOGGER.info("Verifying schema...")
+        for table_name, config in self._table_configs.items():
+            clean_name = table_name.replace('_', ' ')
+            if not self.verify_table(table_name):
+                self._sf.query(self.load_sql(config.create_sql))
+                LOGGER.info(f"Created {clean_name} table.")
+        LOGGER.info("Schema verified successfully.")
 
-def load_sql(file_name: str) -> str:
-    """Takes file name and goes into the queries folder to return the file as text."""
-    current_dir = Path(__file__).parent
-    path = current_dir / 'queries' / file_name
-    return path.read_text(encoding='utf-8')
+    def run_migrations(self) -> None:
+        """
+        Runs all SQL files found in queries/migrations/ in alphabetical order.
+        Each file must contain idempotent statements (e.g. ALTER TABLE ... ADD COLUMN IF NOT EXISTS).
+        """
+        LOGGER.info("Running migrations...")
+        migrations_dir = Path(__file__).parent / 'queries' / 'migrations'
+        migration_files = sorted(migrations_dir.glob('*.sql'))
+        for migration_file in migration_files:
+            LOGGER.info(f"Applying migration: {migration_file.name}...")
+            sql = migration_file.read_text(encoding='utf-8')
+            for statement in sql.split(';'):
+                statement = statement.strip()
+                if statement:
+                    self._sf.query(statement)
+            LOGGER.info(f"Migration {migration_file.name} applied successfully.")
+        LOGGER.info("Migrations complete.")
+
+    BACKFILL_DATE = datetime(2023, 12, 29) # 2024 Luminate year start date
+
+    def update_tables(self) -> None:
+        """Takes in Snowflake connection and updates tables. Done by looping through TABLE_CONFIGS."""
+        LOGGER.info("Updating tables...")
+        for table_name, config in self._table_configs.items():
+            clean_name = table_name.replace('_', ' ')
+            if self.verify_table(table_name):
+                if config.use_checkpoint:
+                    date = self._checkpoint_handler.get_checkpoint_date(table_name)
+                    if date is None:
+                        LOGGER.warning(f"Checkpoint date for {clean_name} is None... backfilling from {self.BACKFILL_DATE.date()}.")
+                        self._sf.query(self.load_sql(config.update_sql, checkpoint_date=self.BACKFILL_DATE))
+                        LOGGER.info(f"Updated {clean_name} table.")
+                    else:
+                        self._sf.query(self.load_sql(config.update_sql, checkpoint_date=date))
+                        LOGGER.info(f"Updated {clean_name} table.")
+                else:
+                    self._sf.query(self.load_sql(config.update_sql))
+                    LOGGER.info(f"Updated {clean_name} table.")
+            else:
+                LOGGER.warning(f"Table {clean_name} does not exist... failed to populate.")
+        self._checkpoint_handler.update_checkpoint()
+        LOGGER.info("Tables updated successfully.")
+    
+    # Helper Marketshare functions
+
+    def load_sql(self, file_name: str, *, checkpoint_date: datetime = None) -> str:
+        """
+        Takes in file name and goes into the queries folder to return the file as text.
+        If checkpoint_date is provided, it will be used to filter the data.
+        """
+        LOGGER.info(f"Loading SQL file {file_name}...")
+        current_dir = Path(__file__).parent
+        path = current_dir / 'queries' / file_name
+        sql = path.read_text(encoding='utf-8')
+        if checkpoint_date is not None:
+            sql = sql.replace('{checkpoint_date}', checkpoint_date.strftime('%Y-%m-%d'))
+        LOGGER.info(f"SQL file {file_name} loaded successfully.")
+        return sql
 
 
-def verify_table(_sf: Snowflake, file_name: str) -> bool:
-    """Takes file name and returns whether it exists in CURRENT_DEV.DATA schema"""
-    sql = load_sql('verify_current_table.sql')
-    sql = sql.replace('{placeholder}', file_name.upper())
-    df = _sf.query(sql)
-    return bool(df.iloc[0,0])
+    def verify_table(self, file_name: str) -> bool:
+        """Takes file name and returns whether it exists in CURRENT_DEV.DATA schema"""
+        LOGGER.info(f"Verifying table {file_name}...")
+        sql = self.load_sql('verify_current_table.sql')
+        sql = sql.replace('{placeholder}', file_name.upper())
+        df = self._sf.query(sql)
+        LOGGER.info(f"Table {file_name} verified successfully.")
+        return bool(df.iloc[0,0])

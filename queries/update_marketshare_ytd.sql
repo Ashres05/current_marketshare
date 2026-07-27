@@ -7,6 +7,7 @@ USING (
             da.weeknum AS week_num,
             w.country_code,
             w.release_age,
+            w.bu_id,
             w.label_name,
             SUM(w.streaming_total) OVER (
                 PARTITION BY da.yearid, w.country_code, w.release_age, w.label_name 
@@ -71,6 +72,7 @@ USING (
         v.week_num,
         v.country_code,
         v.release_age,
+        v.bu_id,
         v.label_name,
         COALESCE(v.streaming_total, 0) AS streaming_total,
         COALESCE(v.album_equivalent, 0) AS album_equivalent,
@@ -108,8 +110,10 @@ WHEN MATCHED AND (
     OR target.product_sales_share != source.product_sales_share
     OR target.song_sale_equivalent_share != source.song_sale_equivalent_share
     OR target.streaming_equivalent_share != source.streaming_equivalent_share
+    OR target.bu_id IS DISTINCT FROM source.bu_id
 ) THEN
     UPDATE SET
+        target.bu_id = source.bu_id,
         target.album_equivalent = source.album_equivalent,
         target.album_equivalent_share = source.album_equivalent_share,
         target.product_sales = source.product_sales,
@@ -124,6 +128,7 @@ WHEN NOT MATCHED THEN
     INSERT (
         album_equivalent,
         album_equivalent_share,
+        bu_id,
         country_code,
         label_name,
         product_sales,
@@ -141,6 +146,7 @@ WHEN NOT MATCHED THEN
     VALUES (
         source.album_equivalent,
         source.album_equivalent_share,
+        source.bu_id,
         source.country_code,
         source.label_name,
         source.product_sales,

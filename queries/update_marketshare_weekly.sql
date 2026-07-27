@@ -172,6 +172,7 @@ USING (
             da.weeknum AS week_num,
             m.country_code,
             m.release_age_type AS release_age,
+            m.parent_bu_id AS bu_id,
             m.market_share_group AS label_name,
             COALESCE(ROUND(MAX(IFF(m.metric_type = 'Volume', m.streams, 0)), 0), 0) AS streaming_total,
             COALESCE(MAX(IFF(m.metric_type = 'Volume', m.album_equivalent, 0)), 0) AS album_equivalent,
@@ -189,7 +190,7 @@ USING (
     )
     
     SELECT 
-        week_ending_date, year, week_num, country_code, release_age, label_name, streaming_total, album_equivalent, product_sales, song_sale_equivalent,
+        week_ending_date, year, week_num, country_code, release_age, bu_id, label_name, streaming_total, album_equivalent, product_sales, song_sale_equivalent,
         streaming_equivalent, album_equivalent_share, product_sales_share, song_sale_equivalent_share, streaming_equivalent_share
     FROM current_dev_marketshare
     
@@ -218,8 +219,10 @@ WHEN MATCHED AND (
     OR target.STREAMING_EQUIVALENT_SHARE != source.streaming_equivalent_share
     OR target.YEAR != source.year
     OR target.WEEK_NUM != source.week_num
+    OR target.BU_ID IS DISTINCT FROM source.bu_id
 ) THEN
 UPDATE SET
+    target.BU_ID = source.bu_id,
     target.STREAMING_TOTAL = source.streaming_total,
     target.ALBUM_EQUIVALENT = source.album_equivalent,
     target.PRODUCT_SALES = source.product_sales,
@@ -234,11 +237,11 @@ UPDATE SET
     
 WHEN NOT MATCHED THEN
 INSERT (
-    WEEK_ENDING_DATE, COUNTRY_CODE, RELEASE_AGE, LABEL_NAME, STREAMING_TOTAL, ALBUM_EQUIVALENT, PRODUCT_SALES, 
+    WEEK_ENDING_DATE, COUNTRY_CODE, RELEASE_AGE, BU_ID, LABEL_NAME, STREAMING_TOTAL, ALBUM_EQUIVALENT, PRODUCT_SALES, 
     SONG_SALE_EQUIVALENT, STREAMING_EQUIVALENT, ALBUM_EQUIVALENT_SHARE, PRODUCT_SALES_SHARE, SONG_SALE_EQUIVALENT_SHARE, 
     STREAMING_EQUIVALENT_SHARE, YEAR, WEEK_NUM
 ) VALUES (
-    source.week_ending_date, source.country_code, source.release_age, source.label_name, source.streaming_total, source.album_equivalent, source.product_sales, 
+    source.week_ending_date, source.country_code, source.release_age, source.bu_id, source.label_name, source.streaming_total, source.album_equivalent, source.product_sales, 
     source.song_sale_equivalent, source.streaming_equivalent, source.album_equivalent_share, source.product_sales_share, source.song_sale_equivalent_share, 
     source.streaming_equivalent_share, source.year, source.week_num
 );

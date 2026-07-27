@@ -1,11 +1,12 @@
 CREATE OR REPLACE TABLE CURRENT_DEV.DATA.MARKETSHARE_MAP_LABEL_HIERARCHY (
     BU_ID STRING PRIMARY KEY,
     LABEL_NAME STRING,
-    LEVEL_1_DISTRIBUTOR STRING,
-    --Distributor (e.x. Warner Music Group)
-    LEVEL_2_DISTRIBUTOR STRING,
-    --Label Group (e.x. Atlantic Music Group)
-    LEVEL_3_DISTRIBUTOR STRING, --Label (e.x. Atlantic Records)
+    LEVEL_1_DISTRIBUTOR STRING,       --Distributor (e.x. Warner Music Group)
+    LEVEL_1_DISTRIBUTOR_BU_ID STRING,
+    LEVEL_2_DISTRIBUTOR STRING,       --Label Group (e.x. Atlantic Music Group)
+    LEVEL_2_DISTRIBUTOR_BU_ID STRING,
+    LEVEL_3_DISTRIBUTOR STRING,       --Label (e.x. Atlantic Records)
+    LEVEL_3_DISTRIBUTOR_BU_ID STRING,
     START_DATE DATE,
     END_DATE DATE
 );

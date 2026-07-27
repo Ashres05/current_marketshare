@@ -10,3 +10,15 @@ secrets/
 
 # Logs
 logs/
+
+# Runtime data (checkpoints)
+data/
+
+# EDA
+eda/
+
+# Test
+test.py
+
+# TODO list
+TODO.md
