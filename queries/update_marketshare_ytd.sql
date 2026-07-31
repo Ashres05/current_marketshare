@@ -63,7 +63,7 @@ USING (
         FROM current_dev.data.marketshare_weekly w
         JOIN luminate_prod.extract_s.vw_date_ds da ON da.datename = w.week_ending_date
         WHERE
-            w.label_name = 'Total Universe'
+            w.label_name = 'Total Universe (Excl Under Review)'
     )
     
     SELECT

@@ -158,7 +158,7 @@ USING (
             v.period, v.week_id, v.week_id_end_date, v.country_code, v.release_age_type, v.parent_bu_id, v.level, v.market_share_group, v.metric_type,
             v.album_equivalent, v.streams, v.song_sales, v.product_sales
         FROM (
-            SELECT * FROM final_volume_pool WHERE market_share_group <> 'Total Universe (Excl Under Review)'
+            SELECT * FROM final_volume_pool
             UNION ALL
             SELECT * FROM share_calculation WHERE market_share_group NOT IN ('Total Universe', 'Total Universe (Excl Under Review)')
         ) v

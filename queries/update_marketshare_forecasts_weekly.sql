@@ -181,7 +181,7 @@ USING (
             LEFT JOIN linear_forecast f2 ON f2.week_ending_date = f1.week_ending_date
             AND f2.release_age = f1.release_age
             AND f2.country_code = f1.country_code
-            AND f2.label_name = 'Total Universe'
+            AND f2.label_name = 'Total Universe (Excl Under Review)'
     ),
     entire_market_year AS (
         SELECT
