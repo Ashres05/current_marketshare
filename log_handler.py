@@ -9,14 +9,18 @@ MARKETSHARE_LOG_FILE = 'marketshare_current.log'
 
 def setup_logging():
     """Configures logging to write to both a file and the console."""
-    target_dir = Path(__file__).parent.parent / LOGS_DIR_NAME
-    
-    # Use environment variable if exists, otherwise default to 'logs' in the current directory
-    if target_dir.exists() and os.access(target_dir, os.W_OK):
-        log_dir = target_dir
+    project_dir = Path(__file__).parent
+    configured_dir = os.getenv("MARKETSHARE_LOG_DIR")
+    ec2_logs_dir = project_dir.parent / "scripts" / LOGS_DIR_NAME
+
+    if configured_dir:
+        log_dir = Path(configured_dir).expanduser()
+    elif ec2_logs_dir.exists() and os.access(ec2_logs_dir, os.W_OK):
+        log_dir = ec2_logs_dir
     else:
-        log_dir = Path(__file__).parent / LOGS_DIR_NAME
-        log_dir.mkdir(parents=True, exist_ok=True)
+        log_dir = project_dir / LOGS_DIR_NAME
+
+    log_dir.mkdir(parents=True, exist_ok=True)
         
     log_file = log_dir / MARKETSHARE_LOG_FILE
     
