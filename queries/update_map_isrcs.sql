@@ -29,7 +29,7 @@ MERGE INTO CURRENT_DEV.DATA.MARKETSHARE_MAP_ISRCS AS target USING (
         )
         AND r.bu_role = 'OWNER'
     GROUP BY
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
 ) AS source
     ON target.mr_id = source.mr_id
     AND target.isrc = source.isrc

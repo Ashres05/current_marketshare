@@ -26,7 +26,7 @@ MERGE INTO CURRENT_DEV.DATA.MARKETSHARE_MAP_ICPNS AS target USING (
         AND r.end_date > CURRENT_DATE()
         AND r.bu_role = 'OWNER'
     GROUP BY
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
 ) AS source
     ON target.mp_id = source.mp_id
     AND target.icpn = source.icpn
