@@ -1,3 +1,6 @@
+# EC2 runs Python 3.9; defers annotation evaluation so PEP 604 unions parse there.
+from __future__ import annotations
+
 import json
 import pandas as pd
 from pathlib import Path
