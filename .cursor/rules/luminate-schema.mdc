@@ -1,0 +1,34 @@
+---
+description: Luminate Music Data Share schema — fetch official docs before inventing columns
+alwaysApply: true
+---
+
+# Luminate schema reference
+
+When writing or changing SQL that touches Luminate views, **consult the official docs** rather than inventing column names or semantics.
+
+## Primary docs
+
+- Market Share schema (views, columns, types, update cadence):
+  https://docs.luminatedata.com/docs/market-share
+- Docs index for related pages (dates, metadata, best practices, etc.):
+  https://docs.luminatedata.com/llms.txt
+
+Prefer fetching those URLs when unsure about a field. Related guides often needed here: Mapping Data, Reference Data, Fact Data Structure, Best Practices, Market IDs.
+
+## Views this repo relies on
+
+| View | Typical source | Purpose |
+| --- | --- | --- |
+| `VW_WEEKLY_FACT_MARKET_SHARE_LEGACY_DS` | `LUMINATE_PROD_WMGONLY.EXTRACT_S` | Weekly market-share facts (legacy methodology) |
+| `VW_BUSINESS_UNIT_DS` | `LUMINATE_PROD_WMGONLY.EXTRACT_S` | BU metadata (`BU_ID`, names, date ranges) |
+| `VW_BUSINESS_UNIT_HIERARCHY_DS` | `LUMINATE_PROD_WMGONLY.EXTRACT_S` | Parent/child BU hierarchy + `LEVEL` |
+| `VW_DATE_DS` | `LUMINATE_PROD.EXTRACT_S` | Chart weeks / calendar (`WEEKID`, `WEEK_END_DATE`, …) |
+
+## Doc reminders that affect queries
+
+- Cluster keys on market-share facts: `COUNTRY_CODE`, `WEEK_ID` — filter on these when possible
+- Market-share views refresh daily but only for the current + most recent completed quarter
+- BU / hierarchy / rights views use `START_DATE` / `END_DATE` validity windows — join as-of the week end date
+- `WEEK_ID` is chart week in `YYYYWW` format
+- NOTE: VW_WEEKLY_FACT_MARKET_SHARE_DS currently does not exist in the schema. Use VW_WEEKLY_FACT_MARKET_SHARE_LEGACY_DS instead.

@@ -1,0 +1,24 @@
+---
+description: Snowflake SQL conventions for queries/ in this marketshare ETL
+globs: queries/**/*.sql
+alwaysApply: false
+---
+
+# Snowflake SQL conventions
+
+## Layout
+
+- Pair files: `create_<name>.sql` + `update_<name>.sql`; register both in `table_configs.py`
+- Migrations: `queries/migrations/*.sql` — alphabetical, **idempotent** (`ADD COLUMN IF NOT EXISTS`, etc.)
+- Prefer fully qualified names: `CURRENT_DEV.DATA.<TABLE>`, `LUMINATE_PROD[_WMGONLY].EXTRACT_S.<view>`
+
+## Patterns used here
+
+- Prefer `MERGE INTO ... USING (...)` for incremental loads
+- Date availability: join `vw_date_ds` and often exclude the last ~2 days of incomplete data
+- Placeholders: `{placeholder}` (table verify), `{checkpoint_date}` (YYYY-MM-DD) — only where Python substitutes them
+- Filter market-share facts by `COUNTRY_CODE` and `WEEK_ID` for performance (Luminate cluster keys)
+
+## Luminate columns
+
+Do not guess Luminate field names. Use https://docs.luminatedata.com/docs/market-share (and https://docs.luminatedata.com/llms.txt for related views). Match existing casing in joins (`owner_bu_id`, `week_id`, etc.) to the surrounding file.

@@ -1,0 +1,50 @@
+---
+description: Project overview, tech stack, and pipeline architecture for current marketshare
+alwaysApply: true
+---
+
+# Current Marketshare Pipeline
+
+ETL that builds Warner Music Group market-share tables in Snowflake from Luminate Music Data Share views.
+
+## Tech stack
+
+- **Runtime**: Python 3.9 on EC2 (production); local runs supported via `secrets/`
+- **Warehouse**: Snowflake (`snowflake-connector-python`, key-pair auth)
+- **SQL**: Snowflake SQL stored under `queries/`
+- **Data**: pandas DataFrames for query results; JSON checkpoints under `data/`
+- **Config**: env vars / dotenv (`SNOWFLAKE_*`); never commit secrets
+
+## Architecture
+
+Entry point: `marketshare_main.py` → Snowflake conn → `QueryHandler` + `CheckpointHandler`.
+
+Pipeline order:
+1. `set_database()` — `USE DATABASE CURRENT_DEV`
+2. `verify_schema()` — create missing tables from `TABLE_CONFIGS`
+3. `run_migrations()` — idempotent SQL in `queries/migrations/`
+4. `update_tables()` — MERGE/UPDATE from Luminate into `CURRENT_DEV.DATA.*`
+
+Table definitions live in `table_configs.py` (create + update SQL pair per table). Checkpointed tables (`use_checkpoint=True`) substitute `{checkpoint_date}` in SQL.
+
+## Databases / schemas
+
+| Role | Location |
+| --- | --- |
+| Destination | `CURRENT_DEV.DATA` |
+| Luminate shared | `LUMINATE_PROD.EXTRACT_S` (e.g. `vw_date_ds`) |
+| Luminate WMG | `LUMINATE_PROD_WMGONLY.EXTRACT_S` (market share, BU views) |
+
+## Ops notes
+
+- EC2 prefers logs under sibling `scripts/logs/` when writable; else local `logs/`
+- Auth: `SNOWFLAKE_PRIVATE_KEY` (PEM) + user/role/warehouse/account
+- Local secrets: `secrets/snowflake_secrets.env`; EC2 uses OS env / `.env`
+- Luminate chart week IDs are `YYYYWW`; availability often lags ~2 days (`DATEADD('DAY', -2, CURRENT_DATE)`)
+
+## Schema docs
+
+For Luminate market-share view columns and semantics, use:
+https://docs.luminatedata.com/docs/market-share
+
+Full docs index (llms.txt): https://docs.luminatedata.com/llms.txt

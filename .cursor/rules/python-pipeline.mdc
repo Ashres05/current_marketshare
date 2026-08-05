@@ -1,0 +1,28 @@
+---
+description: Python conventions for the Snowflake marketshare ETL on EC2
+globs: **/*.py
+alwaysApply: false
+---
+
+# Python conventions
+
+## Compatibility
+
+- Target **Python 3.9** (EC2). Use `from __future__ import annotations` when using modern type syntax (e.g. `dict[str, T]`, `|` unions).
+- Keep modules importable without side effects; orchestration stays in `marketshare_main.py`.
+
+## Structure
+
+- `snowflake_conn.py` — connection + `Snowflake.query()` → pandas
+- `query_marketshare.py` — load SQL from `queries/`, verify/create/update tables
+- `table_configs.py` — single registry of table → create/update SQL
+- `checkpoint_handler.py` — `data/checkpoint.json` for incremental tables
+- `log_handler.py` — rotating file + console logging
+
+## Practices
+
+- Load SQL from files via `QueryHandler.load_sql`; do not embed large SQL strings in Python
+- New tables: add SQL pair under `queries/`, then an entry in `TABLE_CONFIGS`
+- Schema changes to existing tables: add an idempotent file under `queries/migrations/`
+- Never log or commit private keys / `secrets/`; read creds only through env
+- Prefer context manager `with get_snowflake_connection() as sf:`
