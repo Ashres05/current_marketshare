@@ -1,6 +1,7 @@
-MERGE INTO CURRENT_DEV.DATA.MARKETSHARE_FORECASTS_WEEKLY AS target
-USING (
-    WITH dates AS (
+-- Rebuild source once, prune orphans, then MERGE.
+-- Snowflake does not support MERGE ... WHEN NOT MATCHED BY SOURCE.
+CREATE OR REPLACE TEMPORARY TABLE tmp_marketshare_forecasts_weekly_source AS
+WITH dates AS (
         SELECT
             DISTINCT da.week_end_date AS week_ending_date,
             da.weeknum AS week_num,
@@ -203,8 +204,20 @@ USING (
     QUALIFY ROW_NUMBER() OVER (
         PARTITION BY week_ending_date, country_code, release_age, label_name ORDER BY forecast DESC
     ) = 1
-    
-) AS source
+;
+
+DELETE FROM CURRENT_DEV.DATA.MARKETSHARE_FORECASTS_WEEKLY AS target
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM tmp_marketshare_forecasts_weekly_source AS source
+    WHERE target.week_ending_date = source.week_ending_date
+      AND target.country_code = source.country_code
+      AND target.release_age = source.release_age
+      AND target.label_name = source.label_name
+);
+
+MERGE INTO CURRENT_DEV.DATA.MARKETSHARE_FORECASTS_WEEKLY AS target
+USING tmp_marketshare_forecasts_weekly_source AS source
 ON target.week_ending_date = source.week_ending_date
 AND target.country_code = source.country_code
 AND target.release_age = source.release_age

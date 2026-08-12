@@ -11,7 +11,7 @@ ETL that builds Warner Music Group market-share tables in Snowflake from Luminat
 
 - **Runtime**: Python 3.9 on EC2 (production); local runs supported via `secrets/`
 - **Warehouse**: Snowflake (`snowflake-connector-python`, key-pair auth)
-- **SQL**: Snowflake SQL stored under `queries/`
+- **SQL**: Snowflake SQL stored under `queries/` (pipeline) and `queries/migrations/`; one-off test/scratch SQL goes in `queries/test_queries/` (gitignored — do not commit)
 - **Data**: pandas DataFrames for query results; JSON checkpoints under `data/`
 - **Config**: env vars / dotenv (`SNOWFLAKE_*`); never commit secrets
 
@@ -20,7 +20,7 @@ ETL that builds Warner Music Group market-share tables in Snowflake from Luminat
 Entry point: `marketshare_main.py` → Snowflake conn → `QueryHandler` + `CheckpointHandler`.
 
 Pipeline order:
-1. `set_database()` — `USE DATABASE CURRENT_DEV`
+1. `set_database()` — `USE SCHEMA CURRENT_DEV.DATA` (required for `CREATE TEMPORARY TABLE`)
 2. `verify_schema()` — create missing tables from `TABLE_CONFIGS`
 3. `run_migrations()` — idempotent SQL in `queries/migrations/`
 4. `update_tables()` — MERGE/UPDATE from Luminate into `CURRENT_DEV.DATA.*`

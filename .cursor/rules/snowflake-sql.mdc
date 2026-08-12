@@ -10,12 +10,14 @@ alwaysApply: false
 
 - Pair files: `create_<name>.sql` + `update_<name>.sql`; register both in `table_configs.py`
 - Migrations: `queries/migrations/*.sql` — alphabetical, **idempotent** (`ADD COLUMN IF NOT EXISTS`, etc.)
+- Ad-hoc / scratch / validation SQL: put under `queries/test_queries/` only (gitignored). Never leave one-off test `.sql` files in `queries/` root or they risk being committed with pipeline SQL
 - Prefer fully qualified names: `CURRENT_DEV.DATA.<TABLE>`, `LUMINATE_PROD[_WMGONLY].EXTRACT_S.<view>`
 
 ## Patterns used here
 
 - Prefer `MERGE INTO ... USING (...)` for incremental loads
-- Snowflake does **not** support `WHEN NOT MATCHED BY SOURCE`; use a separate `DELETE ... WHERE NOT EXISTS` before the MERGE when maps must stay 1:1 with source. `update_tables()` splits update SQL on `;` like migrations
+- Snowflake does **not** support `WHEN NOT MATCHED BY SOURCE`; use a separate `DELETE ... WHERE NOT EXISTS` before the MERGE when tables must stay 1:1 with source. For large CTE sources, `CREATE OR REPLACE TEMPORARY TABLE … AS` then DELETE+MERGE against that temp (avoids duplicating the USING body). `update_tables()` splits update SQL on `;` like migrations — never put `;` inside `--` comments
+- Albums (`update_marketshare_weekly_albums.sql`): keep `{checkpoint_date}` for fact MERGE only; always follow with a remap pass that refreshes L1/L2/L3 from current `MAP_ICPNS` (majority vote per MRELG) so hierarchy moves update all weeks without a full Luminate fact rebuild. Do **not** orphan-delete albums against the checkpointed MERGE source (that would wipe pre-checkpoint history)
 - Date availability: join `vw_date_ds` and often exclude the last ~2 days of incomplete data
 - Placeholders: `{placeholder}` (table verify), `{checkpoint_date}` (YYYY-MM-DD) — only where Python substitutes them
 - Filter market-share facts by `COUNTRY_CODE` and `WEEK_ID` for performance (Luminate cluster keys)

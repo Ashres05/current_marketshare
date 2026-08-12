@@ -1,42 +1,59 @@
--- Merge weekly artist marketshare aggregates into MARKETSHARE_WEEKLY_ARTISTS, updating matches on the composite PK or inserting new rows.
+-- Rebuild albums-derived artist aggregates, prune orphans, then MERGE.
 -- Grain is artist x country x week x is_current x distributor BU_ID path.
 -- Distributor names are display-only (ANY_VALUE) so name variants with the same BU_IDs do not create duplicate MERGE source rows.
-MERGE INTO current_dev.data.marketshare_weekly_artists AS tgt USING (
-    WITH luminate_agg AS (
-        SELECT
-            f.week_ending_date,
-            a.artist_id,
-            MAX(a.artist_name) AS artist_name,
-            f.country_code,
-            f.is_current,
-            SUM(f.streaming_total)      AS streaming_total,
-            SUM(f.album_equivalent)     AS album_equivalent,
-            SUM(f.product_sales)        AS product_sales,
-            SUM(f.song_sale_equivalent) AS song_sale_equivalent,
-            SUM(f.streaming_equivalent) AS streaming_equivalent,
-            MAX(COALESCE(f.level_1_distributor, 'N/A')) AS level_1_distributor,
-            COALESCE(f.level_1_distributor_bu_id, 'N/A') AS level_1_distributor_bu_id,
-            MAX(COALESCE(f.level_2_distributor, 'N/A')) AS level_2_distributor,
-            COALESCE(f.level_2_distributor_bu_id, 'N/A') AS level_2_distributor_bu_id,
-            MAX(COALESCE(f.level_3_distributor, 'N/A')) AS level_3_distributor,
-            COALESCE(f.level_3_distributor_bu_id, 'N/A') AS level_3_distributor_bu_id
-        FROM
-            current_dev.data.marketshare_weekly_albums f
-            JOIN luminate_prod.extract_s.vw_artist_ds a ON f.primary_artist_id = a.artist_id -- NOTE: Will drop albums without an artist ID.
-        WHERE
-            f.week_ending_date < DATEADD(DAY, -2, CURRENT_DATE()) -- Ignore unfinished building data for the current week
-        GROUP BY
-            f.week_ending_date,
-            a.artist_id,
-            f.country_code,
-            f.is_current,
-            COALESCE(f.level_1_distributor_bu_id, 'N/A'),
-            COALESCE(f.level_2_distributor_bu_id, 'N/A'),
-            COALESCE(f.level_3_distributor_bu_id, 'N/A')
-    )
-    SELECT l.*
-    FROM luminate_agg l
-) AS src
+-- Snowflake does not support MERGE ... WHEN NOT MATCHED BY SOURCE.
+CREATE OR REPLACE TEMPORARY TABLE tmp_marketshare_weekly_artists_source AS
+WITH luminate_agg AS (
+    SELECT
+        f.week_ending_date,
+        a.artist_id,
+        MAX(a.artist_name) AS artist_name,
+        f.country_code,
+        f.is_current,
+        SUM(f.streaming_total)      AS streaming_total,
+        SUM(f.album_equivalent)     AS album_equivalent,
+        SUM(f.product_sales)        AS product_sales,
+        SUM(f.song_sale_equivalent) AS song_sale_equivalent,
+        SUM(f.streaming_equivalent) AS streaming_equivalent,
+        MAX(COALESCE(f.level_1_distributor, 'N/A')) AS level_1_distributor,
+        COALESCE(f.level_1_distributor_bu_id, 'N/A') AS level_1_distributor_bu_id,
+        MAX(COALESCE(f.level_2_distributor, 'N/A')) AS level_2_distributor,
+        COALESCE(f.level_2_distributor_bu_id, 'N/A') AS level_2_distributor_bu_id,
+        MAX(COALESCE(f.level_3_distributor, 'N/A')) AS level_3_distributor,
+        COALESCE(f.level_3_distributor_bu_id, 'N/A') AS level_3_distributor_bu_id
+    FROM
+        current_dev.data.marketshare_weekly_albums f
+        JOIN luminate_prod.extract_s.vw_artist_ds a ON f.primary_artist_id = a.artist_id -- NOTE: Will drop albums without an artist ID.
+    WHERE
+        f.week_ending_date < DATEADD(DAY, -2, CURRENT_DATE()) -- Ignore unfinished building data for the current week
+    GROUP BY
+        f.week_ending_date,
+        a.artist_id,
+        f.country_code,
+        f.is_current,
+        COALESCE(f.level_1_distributor_bu_id, 'N/A'),
+        COALESCE(f.level_2_distributor_bu_id, 'N/A'),
+        COALESCE(f.level_3_distributor_bu_id, 'N/A')
+)
+SELECT l.*
+FROM luminate_agg l
+;
+
+DELETE FROM current_dev.data.marketshare_weekly_artists AS tgt
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM tmp_marketshare_weekly_artists_source AS src
+    WHERE tgt.artist_id = src.artist_id
+      AND tgt.country_code = src.country_code
+      AND tgt.week_ending_date = src.week_ending_date
+      AND tgt.is_current = src.is_current
+      AND tgt.level_1_distributor_bu_id IS NOT DISTINCT FROM src.level_1_distributor_bu_id
+      AND tgt.level_2_distributor_bu_id IS NOT DISTINCT FROM src.level_2_distributor_bu_id
+      AND tgt.level_3_distributor_bu_id IS NOT DISTINCT FROM src.level_3_distributor_bu_id
+);
+
+MERGE INTO current_dev.data.marketshare_weekly_artists AS tgt
+USING tmp_marketshare_weekly_artists_source AS src
     ON  tgt.artist_id              = src.artist_id
     AND tgt.country_code           = src.country_code
     AND tgt.week_ending_date       = src.week_ending_date

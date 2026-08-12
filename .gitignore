@@ -19,6 +19,8 @@ eda/
 
 # Test
 test.py
+scripts/
+queries/test_queries/
 
 # TODO list
 TODO.md

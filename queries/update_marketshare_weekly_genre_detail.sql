@@ -1,6 +1,7 @@
-MERGE INTO current_dev.data.marketshare_weekly_genre_detail AS tgt
-USING (
-    WITH date_filter AS (
+-- Rebuild source once, prune orphans, then MERGE.
+-- Snowflake does not support MERGE ... WHEN NOT MATCHED BY SOURCE.
+CREATE OR REPLACE TEMPORARY TABLE tmp_marketshare_weekly_genre_detail_source AS
+WITH date_filter AS (
         SELECT
             DATEADD('DAY', -2, CURRENT_DATE) AS availability_date,
             b.week_end_date AS week_id_end_date
@@ -522,8 +523,22 @@ USING (
             ORDER BY
                 week_ending_date
         ) = 1
-) AS src
-    ON tgt.week_ending_date = src.week_ending_date
+;
+
+DELETE FROM current_dev.data.marketshare_weekly_genre_detail AS tgt
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM tmp_marketshare_weekly_genre_detail_source AS src
+    WHERE tgt.week_ending_date = src.week_ending_date
+      AND tgt.release_age = src.release_age
+      AND tgt.bu_id = src.bu_id
+      AND tgt.genre_id = src.genre_id
+      AND tgt.country_code = src.country_code
+);
+
+MERGE INTO current_dev.data.marketshare_weekly_genre_detail AS tgt
+USING tmp_marketshare_weekly_genre_detail_source AS src
+ON tgt.week_ending_date = src.week_ending_date
     AND tgt.release_age = src.release_age
     AND tgt.bu_id = src.bu_id
     AND tgt.genre_id = src.genre_id
