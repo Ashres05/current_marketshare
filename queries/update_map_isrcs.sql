@@ -1,9 +1,31 @@
+-- Remove map rows that are no longer in the active VALID OWNER rights set
+-- (Snowflake does not support MERGE ... WHEN NOT MATCHED BY SOURCE).
+DELETE FROM CURRENT_DEV.DATA.MARKETSHARE_MAP_ISRCS AS target
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM luminate_prod_wmgonly.extract_s.vw_musical_right_ds r
+    JOIN luminate_prod.extract_s.vw_musical_recording_ds mr
+        ON mr.mr_id = r.entity_id
+        AND r.entity_type = 'MR'
+    WHERE r.right_type = 'VALID'
+      AND (
+          r.end_date IS NULL
+          OR r.end_date > CURRENT_DATE()
+      )
+      AND r.bu_role = 'OWNER'
+      AND target.mr_id = mr.mr_id
+      AND target.isrc IS NOT DISTINCT FROM mr.isrc
+      AND target.country_code = 'US'
+      AND target.owner_bu_id IS NOT DISTINCT FROM r.bu_id
+);
+
 MERGE INTO CURRENT_DEV.DATA.MARKETSHARE_MAP_ISRCS AS target USING (
     SELECT
         mr.mr_id,
         mr.isrc,
         'US' AS country_code,
         -- Hardcoded U.S. only
+        r.bu_id AS owner_bu_id,
         l.level_1_distributor,
         l.level_1_distributor_bu_id,
         l.level_2_distributor,
@@ -15,7 +37,7 @@ MERGE INTO CURRENT_DEV.DATA.MARKETSHARE_MAP_ISRCS AS target USING (
             WHEN DATEADD(MONTH, 18, mr.first_stream_date) >= CURRENT_DATE() THEN TRUE
             ELSE FALSE
         END AS is_current,
-        SUM(r.share * 100) AS percent_owned -- Combine split label shares (i.e. AMG buys 10% then 5% later; gets summed to 15%)
+        SUM(r.share * 100) AS percent_owned -- Combine split label shares (e.g. AMG 10% then 5% later summed to 15%)
     FROM
         luminate_prod_wmgonly.extract_s.vw_musical_right_ds r
         JOIN luminate_prod.extract_s.vw_musical_recording_ds mr ON mr.mr_id = r.entity_id
@@ -29,36 +51,42 @@ MERGE INTO CURRENT_DEV.DATA.MARKETSHARE_MAP_ISRCS AS target USING (
         )
         AND r.bu_role = 'OWNER'
     GROUP BY
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12
 ) AS source
     ON target.mr_id = source.mr_id
     AND target.isrc = source.isrc
-    AND target.level_1_distributor_bu_id IS NOT DISTINCT FROM source.level_1_distributor_bu_id
-    AND target.level_2_distributor_bu_id IS NOT DISTINCT FROM source.level_2_distributor_bu_id
-    AND target.level_3_distributor_bu_id IS NOT DISTINCT FROM source.level_3_distributor_bu_id
+    AND target.country_code = source.country_code
+    AND target.owner_bu_id IS NOT DISTINCT FROM source.owner_bu_id
 
-WHEN MATCHED -- Update rows with changed metadata
+WHEN MATCHED -- Update rows with changed metadata or hierarchy path
     AND (
         target.release_date IS DISTINCT FROM source.release_date
         OR target.is_current IS DISTINCT FROM source.is_current
         OR target.percent_owned IS DISTINCT FROM source.percent_owned
         OR target.level_1_distributor IS DISTINCT FROM source.level_1_distributor
+        OR target.level_1_distributor_bu_id IS DISTINCT FROM source.level_1_distributor_bu_id
         OR target.level_2_distributor IS DISTINCT FROM source.level_2_distributor
+        OR target.level_2_distributor_bu_id IS DISTINCT FROM source.level_2_distributor_bu_id
         OR target.level_3_distributor IS DISTINCT FROM source.level_3_distributor
+        OR target.level_3_distributor_bu_id IS DISTINCT FROM source.level_3_distributor_bu_id
     ) THEN
     UPDATE SET
         target.release_date = source.release_date,
         target.is_current = source.is_current,
         target.percent_owned = source.percent_owned,
         target.level_1_distributor = source.level_1_distributor,
+        target.level_1_distributor_bu_id = source.level_1_distributor_bu_id,
         target.level_2_distributor = source.level_2_distributor,
-        target.level_3_distributor = source.level_3_distributor
+        target.level_2_distributor_bu_id = source.level_2_distributor_bu_id,
+        target.level_3_distributor = source.level_3_distributor,
+        target.level_3_distributor_bu_id = source.level_3_distributor_bu_id
 
-WHEN NOT MATCHED THEN -- Create new rows for new songs
+WHEN NOT MATCHED THEN -- Create new rows for new songs / ownership
     INSERT (
         mr_id,
         isrc,
         country_code,
+        owner_bu_id,
         level_1_distributor,
         level_1_distributor_bu_id,
         level_2_distributor,
@@ -73,6 +101,7 @@ WHEN NOT MATCHED THEN -- Create new rows for new songs
         source.mr_id,
         source.isrc,
         source.country_code,
+        source.owner_bu_id,
         source.level_1_distributor,
         source.level_1_distributor_bu_id,
         source.level_2_distributor,

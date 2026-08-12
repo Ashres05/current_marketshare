@@ -69,18 +69,58 @@ class QueryHandler:
                     date = self._checkpoint_handler.get_checkpoint_date(table_name)
                     if date is None:
                         LOGGER.warning(f"Checkpoint date for {clean_name} is None... backfilling from {self.BACKFILL_DATE.date()}.")
-                        self._sf.query(self.load_sql(config.update_sql, checkpoint_date=self.BACKFILL_DATE))
+                        self._run_update_sql(self.load_sql(config.update_sql, checkpoint_date=self.BACKFILL_DATE))
                         LOGGER.info(f"Updated {clean_name} table.")
                     else:
-                        self._sf.query(self.load_sql(config.update_sql, checkpoint_date=date))
+                        self._run_update_sql(self.load_sql(config.update_sql, checkpoint_date=date))
                         LOGGER.info(f"Updated {clean_name} table.")
                 else:
-                    self._sf.query(self.load_sql(config.update_sql))
+                    self._run_update_sql(self.load_sql(config.update_sql))
                     LOGGER.info(f"Updated {clean_name} table.")
             else:
                 LOGGER.warning(f"Table {clean_name} does not exist... failed to populate.")
         self._checkpoint_handler.update_checkpoint()
         LOGGER.info("Tables updated successfully.")
+
+    def _run_update_sql(self, sql: str) -> None:
+        """
+        Execute one or more statements from an update SQL file.
+        Split on ';' like migrations so files can pair DELETE + MERGE
+        (Snowflake has no WHEN NOT MATCHED BY SOURCE).
+        Line comments are stripped before splitting so ';' inside -- comments
+        does not truncate statements.
+        """
+        cleaned_lines = []
+        for line in sql.splitlines():
+            in_single = False
+            out = []
+            i = 0
+            while i < len(line):
+                ch = line[i]
+                # Start of -- comment outside a string: drop rest of line
+                if not in_single and ch == '-' and i + 1 < len(line) and line[i + 1] == '-':
+                    break
+                if ch == "'" and not in_single:
+                    in_single = True
+                    out.append(ch)
+                elif ch == "'" and in_single:
+                    # Handle escaped '' inside Snowflake strings
+                    if i + 1 < len(line) and line[i + 1] == "'":
+                        out.append("''")
+                        i += 2
+                        continue
+                    in_single = False
+                    out.append(ch)
+                else:
+                    out.append(ch)
+                i += 1
+            cleaned_lines.append(''.join(out))
+        cleaned_sql = '\n'.join(cleaned_lines)
+
+        for statement in cleaned_sql.split(';'):
+            statement = statement.strip()
+            if statement:
+                self._sf.query(statement)
     
     # Helper Marketshare functions
 

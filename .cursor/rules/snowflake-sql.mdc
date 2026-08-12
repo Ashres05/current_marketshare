@@ -15,6 +15,7 @@ alwaysApply: false
 ## Patterns used here
 
 - Prefer `MERGE INTO ... USING (...)` for incremental loads
+- Snowflake does **not** support `WHEN NOT MATCHED BY SOURCE`; use a separate `DELETE ... WHERE NOT EXISTS` before the MERGE when maps must stay 1:1 with source. `update_tables()` splits update SQL on `;` like migrations
 - Date availability: join `vw_date_ds` and often exclude the last ~2 days of incomplete data
 - Placeholders: `{placeholder}` (table verify), `{checkpoint_date}` (YYYY-MM-DD) — only where Python substitutes them
 - Filter market-share facts by `COUNTRY_CODE` and `WEEK_ID` for performance (Luminate cluster keys)

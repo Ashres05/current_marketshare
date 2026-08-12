@@ -28,7 +28,7 @@ Prefer fetching those URLs when unsure about a field. Related guides often neede
 ## Doc reminders that affect queries
 
 - Cluster keys on market-share facts: `COUNTRY_CODE`, `WEEK_ID` — filter on these when possible
-- Market-share views refresh daily but only for the current + most recent completed quarter
+- Market-share views refresh daily, but that refresh window is only the current + most recently completed quarter — this limits which weeks are *updated*, not which weeks are *retained*; historical weeks can still be queried from the share
 - BU / hierarchy / rights views use `START_DATE` / `END_DATE` validity windows — join as-of the week end date
 - `WEEK_ID` is chart week in `YYYYWW` format
 - NOTE: VW_WEEKLY_FACT_MARKET_SHARE_DS currently does not exist in the schema. Use VW_WEEKLY_FACT_MARKET_SHARE_LEGACY_DS instead.

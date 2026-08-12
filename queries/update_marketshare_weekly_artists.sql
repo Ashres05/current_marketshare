@@ -23,6 +23,8 @@ MERGE INTO current_dev.data.marketshare_weekly_artists AS tgt USING (
         FROM
             current_dev.data.marketshare_weekly_albums f
             JOIN luminate_prod.extract_s.vw_artist_ds a ON f.primary_artist_id = a.artist_id -- NOTE: Will drop albums without an artist ID.
+        WHERE
+            f.week_ending_date < DATEADD(DAY, -2, CURRENT_DATE()) -- Ignore unfinished building data for the current week
         GROUP BY
             f.week_ending_date,
             a.artist_id,

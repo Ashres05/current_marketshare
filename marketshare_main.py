@@ -21,8 +21,8 @@ def main() -> None:
             qh.verify_schema()
             logger.info("Schema verified.")
 
-            qh.run_migrations()
-            logger.info("Migrations applied.")
+            # qh.run_migrations()
+            # logger.info("Migrations applied.")
 
             qh.update_tables()
             logger.info("Tables populated.")

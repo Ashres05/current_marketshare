@@ -115,6 +115,7 @@ USING (
             current_dev.data.marketshare_map_icpns i
         WHERE
             i.country_code = 'US'
+            AND i.owner_bu_id IS NOT NULL -- Ignore orphan / pre-OWNER_BU_ID map rows
     ),
     mrelg_label_map_pre_agg AS (
         SELECT
@@ -200,7 +201,7 @@ USING (
             JOIN luminate_prod.extract_s.vw_date_ds da ON da.datename = s.report_date
             AND da.yearid >= 2024 -- Restrict to 2024 since that is the earlies marketshare data
             AND da.week_end_date >= DATE '{checkpoint_date}' -- Restrict to checkpoint date since that is the last updated date
-            AND da.week_end_date < DATEADD(DAY, 2, CURRENT_DATE()) -- Ignore unfinished building data for the current week
+            AND da.week_end_date < DATEADD(DAY, -2, CURRENT_DATE()) -- Ignore unfinished building data for the current week
         GROUP BY
             ALL
     ),
@@ -238,7 +239,7 @@ USING (
             JOIN luminate_prod.extract_s.vw_date_ds da ON da.datename = s.report_date
             AND da.yearid >= 2024 -- Restrict to 2024 since that is the earlies marketshare data
             AND da.week_end_date >= DATE '{checkpoint_date}' -- Restrict to checkpoint date since that is the last updated date
-            AND da.week_end_date < DATEADD(DAY, 2, CURRENT_DATE()) -- Ignore unfinished building data for the current week
+            AND da.week_end_date < DATEADD(DAY, -2, CURRENT_DATE()) -- Ignore unfinished building data for the current week
         GROUP BY
             ALL
     ),
