@@ -376,92 +376,94 @@ WHEN NOT MATCHED THEN INSERT (
 
 -- Remap distributor paths on all album weeks from current MAP_ICPNS (majority vote per MRELG).
 -- Checkpointed MERGE above only refreshes facts for weeks >= checkpoint - this pass fixes stale L1/L2/L3 without rescanning Luminate facts.
-CREATE OR REPLACE TEMPORARY TABLE tmp_album_canonical_paths AS
-WITH album_mrelgs AS (
-    SELECT DISTINCT mrelg_id
-    FROM current_dev.data.marketshare_weekly_albums
-),
-mp_label_map AS (
-    SELECT
-        DISTINCT i.mp_id,
-        COALESCE(i.level_1_distributor, 'N/A') AS level_1_distributor,
-        COALESCE(i.level_1_distributor_bu_id, 'N/A') AS level_1_distributor_bu_id,
-        COALESCE(i.level_2_distributor, 'N/A') AS level_2_distributor,
-        COALESCE(i.level_2_distributor_bu_id, 'N/A') AS level_2_distributor_bu_id,
-        COALESCE(i.level_3_distributor, 'N/A') AS level_3_distributor,
-        COALESCE(i.level_3_distributor_bu_id, 'N/A') AS level_3_distributor_bu_id
-    FROM
-        current_dev.data.marketshare_map_icpns i
-    WHERE
-        i.country_code = 'US'
-        AND i.owner_bu_id IS NOT NULL
-),
-mrelg_mps AS (
-    SELECT DISTINCT
-        m.mp_id,
-        mm.mrelg_id
-    FROM
-        luminate_prod.extract_s.vw_mp_mrel_map_ds m
-        JOIN luminate_prod.extract_s.vw_mrel_mrelg_map_ds mm ON mm.mrel_id = m.mrel_id
-        JOIN album_mrelgs a ON a.mrelg_id = mm.mrelg_id
-),
-mrelg_label_map_pre_agg AS (
-    SELECT
-        mm.mrelg_id,
-        m.level_1_distributor,
-        m.level_1_distributor_bu_id,
-        m.level_2_distributor,
-        m.level_2_distributor_bu_id,
-        m.level_3_distributor,
-        m.level_3_distributor_bu_id,
-        COUNT(DISTINCT m.mp_id) OVER (
-            PARTITION BY mm.mrelg_id,
+-- Single MERGE (not UPDATE...FROM + temp) so path rewrite cannot silently no-op across statements.
+MERGE INTO current_dev.data.marketshare_weekly_albums AS tgt
+USING (
+    WITH album_mrelgs AS (
+        SELECT DISTINCT mrelg_id
+        FROM current_dev.data.marketshare_weekly_albums
+    ),
+    mp_label_map AS (
+        SELECT
+            DISTINCT i.mp_id,
+            COALESCE(i.level_1_distributor, 'N/A') AS level_1_distributor,
+            COALESCE(i.level_1_distributor_bu_id, 'N/A') AS level_1_distributor_bu_id,
+            COALESCE(i.level_2_distributor, 'N/A') AS level_2_distributor,
+            COALESCE(i.level_2_distributor_bu_id, 'N/A') AS level_2_distributor_bu_id,
+            COALESCE(i.level_3_distributor, 'N/A') AS level_3_distributor,
+            COALESCE(i.level_3_distributor_bu_id, 'N/A') AS level_3_distributor_bu_id
+        FROM
+            current_dev.data.marketshare_map_icpns i
+        WHERE
+            i.country_code = 'US'
+            AND i.owner_bu_id IS NOT NULL
+    ),
+    mrelg_mps AS (
+        SELECT DISTINCT
+            m.mp_id,
+            mm.mrelg_id
+        FROM
+            luminate_prod.extract_s.vw_mp_mrel_map_ds m
+            JOIN luminate_prod.extract_s.vw_mrel_mrelg_map_ds mm ON mm.mrel_id = m.mrel_id
+            JOIN album_mrelgs a ON a.mrelg_id = mm.mrelg_id
+    ),
+    mrelg_label_map_pre_agg AS (
+        SELECT
+            mm.mrelg_id,
+            m.level_1_distributor,
             m.level_1_distributor_bu_id,
+            m.level_2_distributor,
             m.level_2_distributor_bu_id,
-            m.level_3_distributor_bu_id
-        ) AS id_count
-    FROM
-        mp_label_map m
-        JOIN mrelg_mps mm ON mm.mp_id = m.mp_id
-),
-mrelg_label_map AS (
-    SELECT
-        mrelg_id,
-        level_1_distributor,
-        level_1_distributor_bu_id,
-        level_2_distributor,
-        level_2_distributor_bu_id,
-        level_3_distributor,
-        level_3_distributor_bu_id
-    FROM
-        mrelg_label_map_pre_agg
-    QUALIFY ROW_NUMBER() OVER (
-        PARTITION BY mrelg_id
-        ORDER BY id_count DESC
-    ) = 1
-)
-SELECT *
-FROM mrelg_label_map
-;
-
-UPDATE current_dev.data.marketshare_weekly_albums AS a
-SET
-    level_1_distributor = c.level_1_distributor,
-    level_1_distributor_bu_id = c.level_1_distributor_bu_id,
-    level_2_distributor = c.level_2_distributor,
-    level_2_distributor_bu_id = c.level_2_distributor_bu_id,
-    level_3_distributor = c.level_3_distributor,
-    level_3_distributor_bu_id = c.level_3_distributor_bu_id
-FROM tmp_album_canonical_paths AS c
-WHERE a.mrelg_id = c.mrelg_id
-  AND (
-    a.level_1_distributor_bu_id IS DISTINCT FROM c.level_1_distributor_bu_id
-    OR a.level_2_distributor_bu_id IS DISTINCT FROM c.level_2_distributor_bu_id
-    OR a.level_3_distributor_bu_id IS DISTINCT FROM c.level_3_distributor_bu_id
-    OR a.level_1_distributor IS DISTINCT FROM c.level_1_distributor
-    OR a.level_2_distributor IS DISTINCT FROM c.level_2_distributor
-    OR a.level_3_distributor IS DISTINCT FROM c.level_3_distributor
-  )
+            m.level_3_distributor,
+            m.level_3_distributor_bu_id,
+            COUNT(DISTINCT m.mp_id) OVER (
+                PARTITION BY mm.mrelg_id,
+                m.level_1_distributor_bu_id,
+                m.level_2_distributor_bu_id,
+                m.level_3_distributor_bu_id
+            ) AS id_count
+        FROM
+            mp_label_map m
+            JOIN mrelg_mps mm ON mm.mp_id = m.mp_id
+    ),
+    mrelg_label_map AS (
+        SELECT
+            mrelg_id,
+            level_1_distributor,
+            level_1_distributor_bu_id,
+            level_2_distributor,
+            level_2_distributor_bu_id,
+            level_3_distributor,
+            level_3_distributor_bu_id
+        FROM
+            mrelg_label_map_pre_agg
+        QUALIFY ROW_NUMBER() OVER (
+            PARTITION BY mrelg_id
+            ORDER BY
+                id_count DESC,
+                level_1_distributor_bu_id,
+                level_2_distributor_bu_id,
+                level_3_distributor_bu_id
+        ) = 1
+    )
+    SELECT *
+    FROM mrelg_label_map
+) AS src
+ON tgt.mrelg_id = src.mrelg_id
+WHEN MATCHED AND (
+    tgt.level_1_distributor_bu_id IS DISTINCT FROM src.level_1_distributor_bu_id
+    OR tgt.level_2_distributor_bu_id IS DISTINCT FROM src.level_2_distributor_bu_id
+    OR tgt.level_3_distributor_bu_id IS DISTINCT FROM src.level_3_distributor_bu_id
+    OR tgt.level_1_distributor IS DISTINCT FROM src.level_1_distributor
+    OR tgt.level_2_distributor IS DISTINCT FROM src.level_2_distributor
+    OR tgt.level_3_distributor IS DISTINCT FROM src.level_3_distributor
+) THEN UPDATE SET
+    tgt.level_1_distributor = src.level_1_distributor,
+    tgt.level_1_distributor_bu_id = src.level_1_distributor_bu_id,
+    tgt.level_2_distributor = src.level_2_distributor,
+    tgt.level_2_distributor_bu_id = src.level_2_distributor_bu_id,
+    tgt.level_3_distributor = src.level_3_distributor,
+    tgt.level_3_distributor_bu_id = src.level_3_distributor_bu_id
 ;
 
 -- Collapse duplicate grains if any remain after path normalization (MERGE key excludes path).
