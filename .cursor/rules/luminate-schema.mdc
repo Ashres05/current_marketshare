@@ -21,6 +21,8 @@ Prefer fetching those URLs when unsure about a field. Related guides often neede
 | View | Typical source | Purpose |
 | --- | --- | --- |
 | `VW_WEEKLY_FACT_MARKET_SHARE_LEGACY_DS` | `LUMINATE_PROD_WMGONLY.EXTRACT_S` | Weekly market-share facts (legacy methodology) |
+| `VW_DAILY_FACT_MR_SUMMARY_DS` | `LUMINATE_PROD.EXTRACT_S` | Daily recording (ISRC) streams / song sales — artists fact path |
+| `VW_DAILY_FACT_MP_SUMMARY_DS` | `LUMINATE_PROD.EXTRACT_S` | Daily product (ICPN) product sales — albums and artists fact paths |
 | `VW_BUSINESS_UNIT_DS` | `LUMINATE_PROD_WMGONLY.EXTRACT_S` | BU metadata (`BU_ID`, names, date ranges) |
 | `VW_BUSINESS_UNIT_HIERARCHY_DS` | `LUMINATE_PROD_WMGONLY.EXTRACT_S` | Parent/child BU hierarchy + `LEVEL` |
 | `VW_DATE_DS` | `LUMINATE_PROD.EXTRACT_S` | Chart weeks / calendar (`WEEKID`, `WEEK_END_DATE`, …) |

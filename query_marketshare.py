@@ -1,4 +1,4 @@
-from snowflake_conn import Snowflake
+from snowflake_conn import Snowflake, SnowflakeConnectionError
 from pathlib import Path
 import logging
 from table_configs import TABLE_CONFIGS, TableConfig
@@ -13,6 +13,10 @@ class QueryHandler:
         checkpoint_handler: CheckpointHandler,
         table_configs: dict[str, TableConfig] = TABLE_CONFIGS):
         LOGGER.info("Initializing QueryHandler...")
+        
+        if not sf.conn:
+            raise SnowflakeConnectionError("Snowflake connection not established.")
+        
         self._sf = sf
         self._checkpoint_handler = checkpoint_handler
         self._table_configs = table_configs
@@ -49,11 +53,7 @@ class QueryHandler:
         migration_files = sorted(migrations_dir.glob('*.sql'))
         for migration_file in migration_files:
             LOGGER.info(f"Applying migration: {migration_file.name}...")
-            sql = migration_file.read_text(encoding='utf-8')
-            for statement in sql.split(';'):
-                statement = statement.strip()
-                if statement:
-                    self._sf.query(statement)
+            self.run_migration(migration_file)
             LOGGER.info(f"Migration {migration_file.name} applied successfully.")
         LOGGER.info("Migrations complete.")
 
@@ -147,3 +147,22 @@ class QueryHandler:
         df = self._sf.query(sql)
         LOGGER.info(f"Table {file_name} verified successfully.")
         return bool(df.iloc[0,0])
+
+
+    def run_migration(self, migration_file: Path) -> None:
+        """
+        Runs a single migration file via cursor.execute (DDL-safe; not pandas read_sql).
+        """
+        LOGGER.info(f"Running migration: {migration_file}...")
+        sql = Path(migration_file).read_text(encoding='utf-8')
+        statements = [part.strip() for part in sql.split(';') if part.strip()]
+        LOGGER.info(f"Migration has {len(statements)} statement(s), {len(sql)} chars.")
+        if not statements:
+            raise SnowflakeConnectionError(
+                f"Migration {migration_file} contained no SQL statements."
+            )
+        for statement in statements:
+            LOGGER.info(f"Executing: {statement[:200]}")
+            sfqid = self._sf.execute(statement)
+            LOGGER.info(f"Executed sfqid={sfqid}")
+        LOGGER.info(f"Migration {migration_file} run successfully.")

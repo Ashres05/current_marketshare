@@ -1,0 +1,21 @@
+-- Restore artists identity to the L1/L2/L3 path PK. OWNER_BU_ID stays as a non-key column.
+-- Prod table must stay populated. Never TRUNCATE or DELETE the whole artists table.
+-- run_migrations() splits this file on the statement separator character,
+-- so that character must never appear inside a comment.
+
+ALTER TABLE CURRENT_DEV.DATA.MARKETSHARE_WEEKLY_ARTISTS
+ADD COLUMN IF NOT EXISTS OWNER_BU_ID VARCHAR;
+
+ALTER TABLE CURRENT_DEV.DATA.MARKETSHARE_WEEKLY_ARTISTS
+DROP CONSTRAINT IF EXISTS PK_MARKETSHARE_WEEKLY_ARTISTS;
+
+ALTER TABLE CURRENT_DEV.DATA.MARKETSHARE_WEEKLY_ARTISTS
+ADD CONSTRAINT PK_MARKETSHARE_WEEKLY_ARTISTS PRIMARY KEY (
+    ARTIST_ID,
+    COUNTRY_CODE,
+    WEEK_ENDING_DATE,
+    IS_CURRENT,
+    LEVEL_1_DISTRIBUTOR_BU_ID,
+    LEVEL_2_DISTRIBUTOR_BU_ID,
+    LEVEL_3_DISTRIBUTOR_BU_ID
+);

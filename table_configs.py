@@ -43,7 +43,8 @@ TABLE_CONFIGS = {
     ),
     'marketshare_weekly_artists': TableConfig(
         create_sql='create_marketshare_weekly_artists.sql',
-        update_sql='update_marketshare_weekly_artists.sql'
+        update_sql='update_marketshare_weekly_artists.sql',
+        use_checkpoint=True
     ),
     'marketshare_weekly_genre_detail': TableConfig(
         create_sql='create_marketshare_weekly_genre_detail.sql',

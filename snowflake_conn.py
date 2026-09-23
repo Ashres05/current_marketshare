@@ -51,6 +51,22 @@ class Snowflake:
         except Exception as e:
             raise SnowflakeConnectionError(f"Unexpected error: {e}")
 
+    def execute(self, sql: str) -> str:
+        """
+        Execute a SQL statement with the Snowflake cursor (DDL/DML).
+        Returns the Snowflake query id.
+        """
+        if not self.conn:
+            raise SnowflakeConnectionError("Snowflake connection is not established.")
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(sql)
+                return cur.sfqid
+        except snowflake.connector.errors.ProgrammingError as e:
+            raise SnowflakeConnectionError(f"An error occurred while executing the query: {e}")
+        except Exception as e:
+            raise SnowflakeConnectionError(f"Unexpected error: {e}")
+
 
 class SnowflakeConnectionError(Exception):
     """
