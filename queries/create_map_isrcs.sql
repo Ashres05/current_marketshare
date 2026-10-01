@@ -11,5 +11,7 @@ CREATE OR REPLACE TABLE CURRENT_DEV.DATA.MARKETSHARE_MAP_ISRCS (
     LEVEL_3_DISTRIBUTOR_BU_ID STRING,
     RELEASE_DATE DATE,
     IS_CURRENT BOOLEAN,
-    PERCENT_OWNED FLOAT
+    PERCENT_OWNED FLOAT,
+    RIGHT_START_DATE DATE,            -- Inclusive musical-right start
+    RIGHT_END_DATE DATE               -- Inclusive musical-right end; NULL = still open
 );

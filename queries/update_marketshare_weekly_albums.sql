@@ -116,6 +116,10 @@ USING (
         WHERE
             i.country_code = 'US'
             AND i.owner_bu_id IS NOT NULL -- Ignore orphan / pre-OWNER_BU_ID map rows
+            AND (
+                i.right_end_date IS NULL
+                OR i.right_end_date > CURRENT_DATE()
+            ) -- Open window only so ended owners do not change the majority path
     ),
     mrelg_label_map_pre_agg AS (
         SELECT
@@ -397,6 +401,10 @@ USING (
         WHERE
             i.country_code = 'US'
             AND i.owner_bu_id IS NOT NULL
+            AND (
+                i.right_end_date IS NULL
+                OR i.right_end_date > CURRENT_DATE()
+            ) -- Open window only so ended owners do not change the majority path
     ),
     mrelg_mps AS (
         SELECT DISTINCT

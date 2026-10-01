@@ -1,5 +1,6 @@
 -- Rebuild source once, prune orphans, then MERGE.
 -- Snowflake does not support MERGE ... WHEN NOT MATCHED BY SOURCE.
+-- Grain is mp_id x icpn x country x owner_bu_id x right window (adjacent windows stay separate).
 CREATE OR REPLACE TEMPORARY TABLE tmp_marketshare_map_icpns_source AS
 SELECT
     mp.mp_id,
@@ -18,7 +19,9 @@ SELECT
         WHEN DATEADD(MONTH, 18, mp.release_date) >= CURRENT_DATE() THEN TRUE
         ELSE FALSE
     END AS is_current,
-    SUM(r.share * 100) AS percent_owned -- Combine split label shares (e.g. AMG 10% then 5% later summed to 15%)
+    SUM(r.share * 100) AS percent_owned, -- Combine split label shares inside each window
+    r.start_date AS right_start_date,
+    r.end_date AS right_end_date
 FROM
     luminate_prod_wmgonly.extract_s.vw_musical_right_ds r
     JOIN luminate_prod.extract_s.vw_musical_product_ds mp ON mp.mp_id = r.entity_id
@@ -26,10 +29,14 @@ FROM
     LEFT JOIN current_dev.data.marketshare_map_label_hierarchy l ON l.bu_id = r.bu_id
 WHERE
     r.right_type = 'VALID'
-    AND r.end_date > CURRENT_DATE()
     AND r.bu_role = 'OWNER'
+    AND r.start_date <= CURRENT_DATE()
+    AND (
+        r.end_date IS NULL
+        OR r.end_date >= DATE '2023-12-29'
+    )
 GROUP BY
-    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15
 ;
 
 DELETE FROM CURRENT_DEV.DATA.MARKETSHARE_MAP_ICPNS AS target
@@ -40,6 +47,8 @@ WHERE NOT EXISTS (
       AND target.icpn = source.icpn
       AND target.country_code = source.country_code
       AND target.owner_bu_id IS NOT DISTINCT FROM source.owner_bu_id
+      AND target.right_start_date IS NOT DISTINCT FROM source.right_start_date
+      AND target.right_end_date IS NOT DISTINCT FROM source.right_end_date
 );
 
 MERGE INTO CURRENT_DEV.DATA.MARKETSHARE_MAP_ICPNS AS target
@@ -48,6 +57,8 @@ USING tmp_marketshare_map_icpns_source AS source
     AND target.icpn = source.icpn
     AND target.country_code = source.country_code
     AND target.owner_bu_id IS NOT DISTINCT FROM source.owner_bu_id
+    AND target.right_start_date IS NOT DISTINCT FROM source.right_start_date
+    AND target.right_end_date IS NOT DISTINCT FROM source.right_end_date
 
 WHEN MATCHED -- Update rows with changed metadata or hierarchy path
     AND (
@@ -72,7 +83,7 @@ WHEN MATCHED -- Update rows with changed metadata or hierarchy path
         target.level_3_distributor = source.level_3_distributor,
         target.level_3_distributor_bu_id = source.level_3_distributor_bu_id
 
-WHEN NOT MATCHED THEN -- Create new rows for new songs / ownership
+WHEN NOT MATCHED THEN -- Create new rows for new songs / ownership windows
     INSERT (
         mp_id,
         icpn,
@@ -86,7 +97,9 @@ WHEN NOT MATCHED THEN -- Create new rows for new songs / ownership
         level_3_distributor_bu_id,
         release_date,
         is_current,
-        percent_owned
+        percent_owned,
+        right_start_date,
+        right_end_date
     )
     VALUES (
         source.mp_id,
@@ -101,5 +114,7 @@ WHEN NOT MATCHED THEN -- Create new rows for new songs / ownership
         source.level_3_distributor_bu_id,
         source.release_date,
         source.is_current,
-        source.percent_owned
+        source.percent_owned,
+        source.right_start_date,
+        source.right_end_date
     );

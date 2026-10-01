@@ -27,7 +27,9 @@ Pipeline order:
 
 Table definitions live in `table_configs.py` (create + update SQL pair per table). Checkpointed tables (`use_checkpoint=True`) substitute `{checkpoint_date}` in SQL. Albums and artists both checkpoint fact MERGEs.
 
-**Albums vs artists:** they no longer share a methodology. Albums are MRELG-level, majority ICPN path, album-only filters (≥10 AE, drop multi-artist compilations). Artists are built from US daily MR/MP summary facts × current `MAP_ISRCS` / `MAP_ICPNS`, prorated by `percent_owned / 100` — **not** an albums rollup.
+**Maps:** `MAP_ICPNS` / `MAP_ISRCS` rows are VALID OWNER windows that overlap the fact horizon (`start_date <= CURRENT_DATE()` and `end_date` is null or `>= 2023-12-29`). Grain includes `owner_bu_id`, `right_start_date`, and `right_end_date` so adjacent windows stay separate. Path columns are today's hierarchy for that owner BU, not as-of the sale week.
+
+**Albums vs artists:** they no longer share a methodology. Albums are MRELG-level, majority ICPN path from the **open** map window only (`right_end_date` is null or `> CURRENT_DATE()`), album-only filters (≥10 AE, drop multi-artist compilations). Artists are built from US daily MR/MP summary facts × `MAP_ISRCS` / `MAP_ICPNS` joined on `report_date` inside the right window, prorated by `percent_owned / 100` — **not** an albums rollup. A week may split across two owners. Artist display-name remap uses only the open window.
 
 **Artists identity (inconsistent, future work):** artists MERGE/PK is still the distributor **path** (`artist_id, country, week, is_current, L1/L2/L3 BU_IDs`), like the old rollup key. That is **inconsistent** with maps (`owner_bu_id` is the MERGE key) and with weekly/YTD/forecasts (`label_name` is the key; `bu_id` is not). `OWNER_BU_ID` stays on artists as a non-key attribute. **Future:** key artists on `owner_bu_id` (or align all fact tables on a BU identity) so hierarchy moves can remap path in place the way albums remaps on `mrelg_id`.
 

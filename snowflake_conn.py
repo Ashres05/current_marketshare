@@ -67,6 +67,23 @@ class Snowflake:
         except Exception as e:
             raise SnowflakeConnectionError(f"Unexpected error: {e}")
 
+    def execute_async(self, sql: str) -> str:
+        """
+        Submit a SQL statement and return immediately.
+        Pair with ALTER SESSION SET ABORT_DETACHED_QUERY = FALSE so the
+        warehouse keeps running after this client disconnects.
+        """
+        if not self.conn:
+            raise SnowflakeConnectionError("Snowflake connection is not established.")
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute_async(sql)
+                return cur.sfqid
+        except snowflake.connector.errors.ProgrammingError as e:
+            raise SnowflakeConnectionError(f"An error occurred while executing the query: {e}")
+        except Exception as e:
+            raise SnowflakeConnectionError(f"Unexpected error: {e}")
+
 
 class SnowflakeConnectionError(Exception):
     """

@@ -1,7 +1,9 @@
--- Weekly artists from US MR/MP daily facts x current ICPN/ISRC maps (prorated ownership).
+-- Weekly artists from US MR/MP daily facts x ICPN/ISRC owner windows (prorated ownership).
+-- Join maps at report_date inside the right window, then SUM to the week.
+-- A week that crosses an ownership change may split across two owners.
 -- Grain is artist x country x week x is_current x L1/L2/L3 path BU_IDs.
 -- OWNER_BU_ID is an attribute only, not MERGE identity (out of scope vs other fact tables).
--- Not an albums rollup. Checkpointed fact MERGE then display-only name remap from current maps.
+-- Not an albums rollup. Checkpointed fact MERGE then display-only name remap from the open window.
 -- Do not orphan-delete against the checkpointed fact source (that would wipe pre-checkpoint history).
 -- Snowflake does not support MERGE ... WHEN NOT MATCHED BY SOURCE.
 
@@ -73,39 +75,42 @@ USING (
             mr_id,
             country_code,
             owner_bu_id,
-            MAX(percent_owned) / 100.0 AS ownership_share,
-            MAX(COALESCE(level_1_distributor, 'N/A')) AS level_1_distributor,
-            MAX(COALESCE(level_1_distributor_bu_id, 'N/A')) AS level_1_distributor_bu_id,
-            MAX(COALESCE(level_2_distributor, 'N/A')) AS level_2_distributor,
-            MAX(COALESCE(level_2_distributor_bu_id, 'N/A')) AS level_2_distributor_bu_id,
-            MAX(COALESCE(level_3_distributor, 'N/A')) AS level_3_distributor,
-            MAX(COALESCE(level_3_distributor_bu_id, 'N/A')) AS level_3_distributor_bu_id
+            right_start_date,
+            right_end_date,
+            percent_owned / 100.0 AS ownership_share,
+            COALESCE(level_1_distributor, 'N/A') AS level_1_distributor,
+            COALESCE(level_1_distributor_bu_id, 'N/A') AS level_1_distributor_bu_id,
+            COALESCE(level_2_distributor, 'N/A') AS level_2_distributor,
+            COALESCE(level_2_distributor_bu_id, 'N/A') AS level_2_distributor_bu_id,
+            COALESCE(level_3_distributor, 'N/A') AS level_3_distributor,
+            COALESCE(level_3_distributor_bu_id, 'N/A') AS level_3_distributor_bu_id
         FROM current_dev.data.marketshare_map_isrcs
         WHERE owner_bu_id IS NOT NULL
           AND country_code = 'US'
-        GROUP BY mr_id, country_code, owner_bu_id
     ),
     icpn_owner_map AS (
         SELECT
             mp_id,
             country_code,
             owner_bu_id,
-            MAX(percent_owned) / 100.0 AS ownership_share,
-            MAX(COALESCE(level_1_distributor, 'N/A')) AS level_1_distributor,
-            MAX(COALESCE(level_1_distributor_bu_id, 'N/A')) AS level_1_distributor_bu_id,
-            MAX(COALESCE(level_2_distributor, 'N/A')) AS level_2_distributor,
-            MAX(COALESCE(level_2_distributor_bu_id, 'N/A')) AS level_2_distributor_bu_id,
-            MAX(COALESCE(level_3_distributor, 'N/A')) AS level_3_distributor,
-            MAX(COALESCE(level_3_distributor_bu_id, 'N/A')) AS level_3_distributor_bu_id
+            right_start_date,
+            right_end_date,
+            percent_owned / 100.0 AS ownership_share,
+            COALESCE(level_1_distributor, 'N/A') AS level_1_distributor,
+            COALESCE(level_1_distributor_bu_id, 'N/A') AS level_1_distributor_bu_id,
+            COALESCE(level_2_distributor, 'N/A') AS level_2_distributor,
+            COALESCE(level_2_distributor_bu_id, 'N/A') AS level_2_distributor_bu_id,
+            COALESCE(level_3_distributor, 'N/A') AS level_3_distributor,
+            COALESCE(level_3_distributor_bu_id, 'N/A') AS level_3_distributor_bu_id
         FROM current_dev.data.marketshare_map_icpns
         WHERE owner_bu_id IS NOT NULL
           AND country_code = 'US'
-        GROUP BY mp_id, country_code, owner_bu_id
     ),
     mr_fact AS (
         SELECT
             r.mr_id,
             s.country_code,
+            s.report_date,
             da.week_end_date,
             SUM(IFF(s.metric_category = 'Streams', s.quantity, 0)) AS total_streams,
             SUM(
@@ -147,6 +152,7 @@ USING (
         SELECT
             p.mp_id,
             s.country_code,
+            s.report_date,
             da.week_end_date,
             SUM(
                 IFF(
@@ -196,6 +202,11 @@ USING (
             JOIN icpn_owner_map i
                 ON i.mp_id = f.mp_id
                 AND i.country_code = f.country_code
+                AND f.report_date >= i.right_start_date
+                AND (
+                    i.right_end_date IS NULL
+                    OR f.report_date <= i.right_end_date
+                )
         GROUP BY
             m.primary_artist_id,
             f.country_code,
@@ -227,6 +238,11 @@ USING (
             JOIN isrc_owner_map i
                 ON i.mr_id = f.mr_id
                 AND i.country_code = f.country_code
+                AND f.report_date >= i.right_start_date
+                AND (
+                    i.right_end_date IS NULL
+                    OR f.report_date <= i.right_end_date
+                )
         GROUP BY
             m.primary_artist_id,
             f.country_code,
@@ -378,7 +394,8 @@ WHEN NOT MATCHED THEN INSERT (
     src.level_3_distributor_bu_id
 );
 
--- Display-only remap: refresh L1/L2/L3 names from current maps on the existing path BU_IDs.
+-- Display-only remap: refresh L1/L2/L3 names from the open map window on the existing path BU_IDs.
+-- Ended owners must not compete for the current path name.
 -- Do not rewrite path BU_ID key columns (that would mint a new PK). Owner-path identity is future work.
 MERGE INTO current_dev.data.marketshare_weekly_artists AS tgt
 USING (
@@ -399,6 +416,10 @@ USING (
             COALESCE(level_3_distributor_bu_id, 'N/A') AS level_3_distributor_bu_id
         FROM current_dev.data.marketshare_map_icpns
         WHERE country_code = 'US'
+          AND (
+              right_end_date IS NULL
+              OR right_end_date > CURRENT_DATE()
+          )
         UNION ALL
         SELECT
             COALESCE(level_1_distributor, 'N/A') AS level_1_distributor,
@@ -409,6 +430,10 @@ USING (
             COALESCE(level_3_distributor_bu_id, 'N/A') AS level_3_distributor_bu_id
         FROM current_dev.data.marketshare_map_isrcs
         WHERE country_code = 'US'
+          AND (
+              right_end_date IS NULL
+              OR right_end_date > CURRENT_DATE()
+          )
     )
     GROUP BY
         level_1_distributor_bu_id,
